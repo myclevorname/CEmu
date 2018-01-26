@@ -259,7 +259,8 @@ SOURCES += \
     visualizerwidget.cpp \
     debugger/visualizerdisplaywidget.cpp \
     memorywidget.cpp \
-    debugger/sourceswidget.cpp
+    debugger/sourceswidget.cpp \
+    debugger/cdebughighlighter.cpp \
     archive/extractor.c \
     ../../core/bus.c \
     keyhistorywidget.cpp \
@@ -354,7 +355,8 @@ HEADERS  += \
     tivars_lib_cpp/src/TypeHandlers/TypeHandlers.h \
     visualizerwidget.h \
     debugger/visualizerdisplaywidget.h \
-    debugger/sourceswidget.h
+    debugger/sourceswidget.h \
+    debugger/cdebughighlighter.h \
     archive/extractor.h \
     ../../core/bus.h \
     keyhistorywidget.h \
