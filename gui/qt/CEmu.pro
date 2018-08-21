@@ -72,6 +72,7 @@ CONFIG(release, debug|release) {
     DEFINES += QT_NO_DEBUG_OUTPUT
 } else {
     #This is a debug build
+    QT += testlib
     GLOBAL_FLAGS += -g3
 }
 
