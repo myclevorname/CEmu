@@ -99,14 +99,33 @@ void MainWindow::debugEnable() {
 }
 
 void MainWindow::debugStep(int mode) {
-    if (mode == DBG_RUN_UNTIL) {
-        debug_step(mode, m_runUntilAddr);
-    } else {
-        disasm.base = static_cast<int32_t>(cpu.registers.PC);
-        disasm.ctx.zdis_adl = cpu.ADL;
-        disasmGet();
-        debug_step(mode, static_cast<uint32_t>(disasm.next));
+    uint32_t addr;
+    switch (mode) {
+        default:
+            disasm.base = int32_t(cpu.registers.PC);
+            disasm.ctx.zdis_adl = cpu.ADL;
+            disasmGet();
+            addr = uint32_t(disasm.next);
+            m_runLoc = {};
+            break;
+        case DBG_RUN_UNTIL:
+            addr = m_runUntilAddr;
+            m_runLoc = {};
+            break;
+        case DBG_RUN_IN:
+        case DBG_RUN_OVER:
+            m_runLoc = ui->sources->getLocInfo(cpu.registers.PC);
+            if (m_runLoc.invalid()) {
+                debugStep(DBG_STEP_OUT);
+                return;
+            }
+            [[gnu::fallthrough]];
+        case DBG_RUN_AGAIN:
+        case DBG_RUN_OUT:
+            addr = m_runLoc.end();
+            break;
     }
+    debug_step(mode, addr);
     emu.resume();
 }
 
@@ -137,7 +156,7 @@ error:
         goto error;
     }
     for (i = 0; i < breakLabel.size(); i++) {
-        breakAdd(breakLabel.at(i), static_cast<uint32_t>(hex2int(breakAddr.at(i))), breakSet.at(i) == TXT_YES, false, false);
+        breakAdd(breakLabel.at(i), uint32_t(hex2int(breakAddr.at(i))), breakSet.at(i) == TXT_YES, false, false);
     }
 
     // load the watchpoint information
@@ -152,8 +171,8 @@ error:
     for (i = 0; i < watchLabel.size(); i++) {
         int mask = (watchR.at(i) == TXT_YES ? DBG_MASK_READ : DBG_MASK_NONE) |
                    (watchW.at(i) == TXT_YES ? DBG_MASK_WRITE : DBG_MASK_NONE);
-        watchAdd(watchLabel.at(i), static_cast<uint32_t>(hex2int(watchLow.at(i))),
-                 static_cast<uint32_t>(hex2int(watchHigh.at(i))), mask, false, false);
+        watchAdd(watchLabel.at(i), uint32_t(hex2int(watchLow.at(i))),
+                 uint32_t(hex2int(watchHigh.at(i))), mask, false, false);
     }
 
     // load the port monitor information
@@ -168,7 +187,7 @@ error:
         int mask = (portR.at(i) == TXT_YES ? DBG_MASK_PORT_READ : DBG_MASK_NONE)  |
                    (portW.at(i) == TXT_YES ? DBG_MASK_PORT_WRITE : DBG_MASK_NONE) |
                    (portF.at(i) == TXT_YES ? DBG_MASK_PORT_FREEZE : DBG_MASK_NONE);
-        portAdd(static_cast<uint16_t>(hex2int(portAddr.at(i))), mask, false);
+        portAdd(uint16_t(hex2int(portAddr.at(i))), mask, false);
     }
 
     // add all the equate files and load them in
@@ -385,7 +404,7 @@ void MainWindow::debugCommand(int reason, uint32_t data) {
 
     // This means the program is trying to send us a debug command. Let's see what we can do with that information
     if (reason >= DBG_NUMBER) {
-        debugExecute(static_cast<uint32_t>(reason - DBG_PORT_RANGE), static_cast<uint8_t>(data));
+        debugExecute(uint32_t(reason - DBG_PORT_RANGE), uint8_t(data));
         return;
     }
 
@@ -414,13 +433,13 @@ void MainWindow::debugCommand(int reason, uint32_t data) {
         case DBG_WATCHPOINT_READ:
         case DBG_WATCHPOINT_WRITE:
             input = int2hex(data, 6);
-            addr = static_cast<uint32_t>(hex2int(input));
+            addr = uint32_t(hex2int(input));
             type = (reason == DBG_WATCHPOINT_READ) ? tr("read") : tr("write");
             text = tr("Hit ") + type + tr(" watchpoint ") + input;
 
             for (int i = 0; i < m_watchpoints->rowCount(); i++) {
-                uint32_t low = static_cast<uint32_t>(hex2int(m_watchpoints->item(i, WATCH_LOW_COL)->text()));
-                uint32_t high = static_cast<uint32_t>(hex2int(m_watchpoints->item(i, WATCH_HIGH_COL)->text()));
+                uint32_t low = uint32_t(hex2int(m_watchpoints->item(i, WATCH_LOW_COL)->text()));
+                uint32_t high = uint32_t(hex2int(m_watchpoints->item(i, WATCH_HIGH_COL)->text()));
                 if (addr >= low && addr <= high) {
                     label = m_watchpoints->item(row, WATCH_NAME_COL)->text();
                     valid = true;
@@ -434,7 +453,7 @@ void MainWindow::debugCommand(int reason, uint32_t data) {
 
             text = tr("Hit ") + type + tr(" watchpoint ") + input + QStringLiteral(" (") + label + QStringLiteral(")");
 
-            gotoMemAddr(static_cast<uint32_t>(hex2int(input)));
+            gotoMemAddr(uint32_t(hex2int(input)));
             break;
         case DBG_PORT_READ:
         case DBG_PORT_WRITE:
@@ -451,6 +470,20 @@ void MainWindow::debugCommand(int reason, uint32_t data) {
         case DBG_MISC_RESET:
             text = tr("Misc. reset");
             break;
+        case DBG_STEP:
+            if (!m_runLoc.invalid()) {
+                auto info = ui->sources->getLocInfo(data);
+                if (info.invalid()) {
+                    debugStep(DBG_RUN_OUT);
+                    return;
+                }
+                if (info.unknown() || info.sameSourceLoc(m_runLoc)) {
+                    m_runLoc.end(info.end());
+                    debugStep(DBG_RUN_AGAIN);
+                    return;
+                }
+            }
+            [[gnu::fallthrough]];
         default:
         case DBG_USER:
             debugRaise();
@@ -470,26 +503,26 @@ void MainWindow::debugSync() {
     }
 
     // Update all the changes in the core
-    cpu.registers.AF = static_cast<uint16_t>(hex2int(ui->afregView->text()));
-    cpu.registers.HL = static_cast<uint32_t>(hex2int(ui->hlregView->text()));
-    cpu.registers.DE = static_cast<uint32_t>(hex2int(ui->deregView->text()));
-    cpu.registers.BC = static_cast<uint32_t>(hex2int(ui->bcregView->text()));
-    cpu.registers.IX = static_cast<uint32_t>(hex2int(ui->ixregView->text()));
-    cpu.registers.IY = static_cast<uint32_t>(hex2int(ui->iyregView->text()));
+    cpu.registers.AF = uint16_t(hex2int(ui->afregView->text()));
+    cpu.registers.HL = uint32_t(hex2int(ui->hlregView->text()));
+    cpu.registers.DE = uint32_t(hex2int(ui->deregView->text()));
+    cpu.registers.BC = uint32_t(hex2int(ui->bcregView->text()));
+    cpu.registers.IX = uint32_t(hex2int(ui->ixregView->text()));
+    cpu.registers.IY = uint32_t(hex2int(ui->iyregView->text()));
 
-    cpu.registers._AF = static_cast<uint16_t>(hex2int(ui->af_regView->text()));
-    cpu.registers._HL = static_cast<uint32_t>(hex2int(ui->hl_regView->text()));
-    cpu.registers._DE = static_cast<uint32_t>(hex2int(ui->de_regView->text()));
-    cpu.registers._BC = static_cast<uint32_t>(hex2int(ui->bc_regView->text()));
+    cpu.registers._AF = uint16_t(hex2int(ui->af_regView->text()));
+    cpu.registers._HL = uint32_t(hex2int(ui->hl_regView->text()));
+    cpu.registers._DE = uint32_t(hex2int(ui->de_regView->text()));
+    cpu.registers._BC = uint32_t(hex2int(ui->bc_regView->text()));
 
-    cpu.registers.SPL = static_cast<uint32_t>(hex2int(ui->splregView->text()));
-    cpu.registers.SPS = static_cast<uint16_t>(hex2int(ui->spsregView->text()));
+    cpu.registers.SPL = uint32_t(hex2int(ui->splregView->text()));
+    cpu.registers.SPS = uint16_t(hex2int(ui->spsregView->text()));
 
-    cpu.registers.MBASE = static_cast<uint8_t>(hex2int(ui->mbregView->text()));
-    cpu.registers.I = static_cast<uint16_t>(hex2int(ui->iregView->text()));
+    cpu.registers.MBASE = uint8_t(hex2int(ui->mbregView->text()));
+    cpu.registers.I = uint16_t(hex2int(ui->iregView->text()));
     uint8_t r = hex2int(ui->rregView->text());
     cpu.registers.R = uint8_t(r << 1 | r >> 7);
-    cpu.IM = static_cast<uint8_t>(hex2int(ui->imregView->text()));
+    cpu.IM = uint8_t(hex2int(ui->imregView->text()));
     cpu.IM += !!cpu.IM;
 
     cpu.registers.flags.Z = ui->checkZ->isChecked();
@@ -510,26 +543,26 @@ void MainWindow::debugSync() {
 
     debug.totalCycles = ui->cycleView->text().toLongLong() + (m_ignoreDmaCycles ? debug.dmaCycles : 0);
 
-    uint32_t uiPC = static_cast<uint32_t>(hex2int(ui->pcregView->text()));
+    uint32_t uiPC = uint32_t(hex2int(ui->pcregView->text()));
     if (cpu.registers.PC != uiPC) {
         cpu_flush(uiPC, ui->checkADL->isChecked());
     }
 
-    backlight.brightness = static_cast<uint8_t>(ui->brightnessSlider->value());
-    backlight.factor = (310.0f - static_cast<float>(backlight.brightness)) / 160.0f;
+    backlight.brightness = uint8_t(ui->brightnessSlider->value());
+    backlight.factor = (310.0f - float(backlight.brightness)) / 160.0f;
 
-    lcd.upbase = static_cast<uint32_t>(hex2int(ui->lcdbaseView->text()));
-    lcd.upcurr = static_cast<uint32_t>(hex2int(ui->lcdcurrView->text()));
+    lcd.upbase = uint32_t(hex2int(ui->lcdbaseView->text()));
+    lcd.upcurr = uint32_t(hex2int(ui->lcdcurrView->text()));
 
     lcd.control &= ~14u;
-    lcd.control |= static_cast<unsigned int>(ui->bppView->currentIndex() << 1);
+    lcd.control |= unsigned(ui->bppView->currentIndex() << 1);
 
     set_reset(ui->checkPowered->isChecked(), 0x800u, lcd.control);
     set_reset(ui->checkBEPO->isChecked(), 0x400u, lcd.control);
     set_reset(ui->checkBEBO->isChecked(), 0x200u, lcd.control);
     set_reset(ui->checkBGR->isChecked(), 0x100u, lcd.control);
 
-    set_cpu_clock(static_cast<uint32_t>(ui->freqView->text().toUInt() * 1e6));
+    set_cpu_clock(uint32_t(ui->freqView->text().toUInt() * 1e6));
 
     lcd_update();
 
@@ -788,8 +821,8 @@ void MainWindow::debugPopulate() {
 
     osUpdate();
     stackUpdate();
-    disasmUpdateAddr(m_prevDisasmAddr = cpu.registers.PC, true);
-    ui->sources->updatePC(m_prevDisasmAddr);
+    disasmUpdateAddr(cpu.registers.PC, true);
+    ui->sources->updatePC();
 
     memUpdate();
 }
@@ -821,7 +854,7 @@ void MainWindow::breakSetPrev(QTableWidgetItem *current, QTableWidgetItem *previ
 }
 
 void MainWindow::breakRemoveRow(int row) {
-    uint32_t address = static_cast<uint32_t>(hex2int(m_breakpoints->item(row, BREAK_ADDR_COL)->text()));
+    uint32_t address = uint32_t(hex2int(m_breakpoints->item(row, BREAK_ADDR_COL)->text()));
 
     changeDebugPoint(address, DBG_MASK_EXEC, false);
     if (!m_guiAdd && !m_useSoftCom) {
@@ -842,7 +875,7 @@ void MainWindow::breakRemoveSelected() {
 
 void MainWindow::breakRemove(uint32_t address) {
     for (int row = 0; row < m_breakpoints->rowCount(); row++) {
-        uint32_t test = static_cast<uint32_t>(hex2int(m_breakpoints->item(row, BREAK_ADDR_COL)->text()));
+        uint32_t test = uint32_t(hex2int(m_breakpoints->item(row, BREAK_ADDR_COL)->text()));
         if (address == test) {
             breakRemoveRow(row);
             break;
@@ -892,7 +925,7 @@ void MainWindow::breakModified(QTableWidgetItem *item) {
             return;
         }
 
-        addr = static_cast<uint32_t>(hex2int(QString::fromStdString(s)));
+        addr = uint32_t(hex2int(QString::fromStdString(s)));
         addrStr = int2hex(addr, 6);
 
         m_breakpoints->blockSignals(true);
@@ -945,7 +978,7 @@ void MainWindow::changeDebugPoint(quint32 address, unsigned type, bool state) {
 }
 
 void MainWindow::breakAddGui() {
-    uint32_t address = static_cast<uint32_t>(hex2int(m_disasm->getSelectedAddr()));
+    uint32_t address = uint32_t(hex2int(m_disasm->getSelectedAddr()));
 
     QTextCursor c = m_disasm->textCursor();
     c.setCharFormat(m_disasm->currentCharFormat());
@@ -1018,7 +1051,7 @@ bool MainWindow::breakAdd(const QString &label, uint32_t addr, bool enabled, boo
 
     connect(btnRemove, &QToolButton::clicked, this, &MainWindow::breakRemoveSelected);
     connect(btnEnable, &QToolButton::clicked, [this, btnEnable, row](bool checked) {
-        uint32_t addr = static_cast<uint32_t>(hex2int(m_breakpoints->item(row, BREAK_ADDR_COL)->text()));
+        uint32_t addr = uint32_t(hex2int(m_breakpoints->item(row, BREAK_ADDR_COL)->text()));
         btnEnable->setIcon(checked ? m_iconCheck : m_iconCheckGray);
         changeDebugPoint(addr, DBG_MASK_EXEC, checked);
         disasmUpdate();
@@ -1077,7 +1110,7 @@ void MainWindow::portSetPrev(QTableWidgetItem *current, QTableWidgetItem *previo
 }
 
 void MainWindow::portRemoveRow(int row) {
-    uint16_t port = static_cast<uint16_t>(hex2int(m_ports->item(row, PORT_ADDR_COL)->text()));
+    uint16_t port = uint16_t(hex2int(m_ports->item(row, PORT_ADDR_COL)->text()));
     debug_ports(port, ~DBG_MASK_NONE, false);
     m_ports->removeRow(row);
 }
@@ -1092,8 +1125,8 @@ void MainWindow::portRemoveSelected() {
 }
 
 void MainWindow::portPopulate(int currRow) {
-    uint16_t port = static_cast<uint16_t>(hex2int(m_ports->item(currRow, PORT_ADDR_COL)->text()));
-    uint8_t read = static_cast<uint8_t>(port_peek_byte(port));
+    uint16_t port = uint16_t(hex2int(m_ports->item(currRow, PORT_ADDR_COL)->text()));
+    uint8_t read = uint8_t(port_peek_byte(port));
 
     m_ports->item(currRow, PORT_VALUE_COL)->setText(int2hex(read, 2));
 }
@@ -1201,7 +1234,7 @@ void MainWindow::portModified(QTableWidgetItem *item) {
     int col = item->column();
 
     if (col == PORT_READ_COL || col == PORT_WRITE_COL || col == PORT_FREEZE_COL) {
-        uint16_t port = static_cast<uint16_t>(hex2int(m_ports->item(row, PORT_ADDR_COL)->text()));
+        uint16_t port = uint16_t(hex2int(m_ports->item(row, PORT_ADDR_COL)->text()));
         unsigned int mask = DBG_MASK_NONE;
 
         if (col == PORT_READ_COL) {   // Break on read
@@ -1223,7 +1256,7 @@ void MainWindow::portModified(QTableWidgetItem *item) {
             return;
         }
 
-        uint16_t port = static_cast<uint16_t>(hex2int(QString::fromStdString(s)));
+        uint16_t port = uint16_t(hex2int(QString::fromStdString(s)));
         uint8_t data = port_peek_byte(port);
         QString portStr = int2hex(port, 4);
 
@@ -1248,8 +1281,8 @@ void MainWindow::portModified(QTableWidgetItem *item) {
         m_ports->item(row, PORT_VALUE_COL)->setText(int2hex(data, 2));
     } else if (col == PORT_VALUE_COL) {
         if (m_ports->item(row, PORT_ADDR_COL)->text() != DEBUG_UNSET_PORT) {
-            uint8_t pdata = static_cast<uint8_t>(hex2int(item->text()));
-            uint16_t port = static_cast<uint16_t>(hex2int(m_ports->item(row, PORT_ADDR_COL)->text()));
+            uint8_t pdata = uint8_t(hex2int(item->text()));
+            uint16_t port = uint16_t(hex2int(m_ports->item(row, PORT_ADDR_COL)->text()));
 
             port_poke_byte(port, pdata);
             item->setText(int2hex(port_peek_byte(port), 2));
@@ -1279,8 +1312,8 @@ void MainWindow::watchSetPrev(QTableWidgetItem *current, QTableWidgetItem *previ
 void MainWindow::watchRemoveRow(int row) {
     if (m_watchpoints->item(row, WATCH_LOW_COL)->text() != DEBUG_UNSET_ADDR &&
         m_watchpoints->item(row, WATCH_HIGH_COL)->text() != DEBUG_UNSET_ADDR) {
-        uint32_t low = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
-        uint32_t high = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_HIGH_COL)->text()));
+        uint32_t low = uint32_t(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
+        uint32_t high = uint32_t(hex2int(m_watchpoints->item(row, WATCH_HIGH_COL)->text()));
 
         for (uint32_t addr = low; addr <= high; addr++) {
             changeDebugPoint(addr, DBG_MASK_READ | DBG_MASK_WRITE, false);
@@ -1306,7 +1339,7 @@ void MainWindow::watchRemoveSelected() {
 
 void MainWindow::watchRemove(uint32_t address) {
     for (int row = 0; row < m_watchpoints->rowCount(); row++) {
-        uint32_t test = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
+        uint32_t test = uint32_t(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
         if (address == test) {
             watchRemoveRow(row);
             break;
@@ -1331,7 +1364,7 @@ void MainWindow::watchAddGuiRW() {
 
 void MainWindow::watchAddGui() {
     int mask = m_watchGUIMask;
-    uint32_t addr = static_cast<uint32_t>(hex2int(m_disasm->getSelectedAddr()));
+    uint32_t addr = uint32_t(hex2int(m_disasm->getSelectedAddr()));
 
     QTextCursor c = m_disasm->textCursor();
     c.setCharFormat(m_disasm->currentCharFormat());
@@ -1345,7 +1378,7 @@ void MainWindow::watchAddGui() {
     int32_t base = disasm.base;
     int32_t next = disasm.next;
 
-    disasm.base = static_cast<int32_t>(addr);
+    disasm.base = int32_t(addr);
     disasm.highlight.watchR = false;
     disasm.highlight.watchW = false;
     disasmGet();
@@ -1391,8 +1424,8 @@ void MainWindow::watchUpdate() {
     for (int row = 0; row < m_watchpoints->rowCount(); row++) {
         if (m_watchpoints->item(row, WATCH_LOW_COL)->text() != DEBUG_UNSET_ADDR &&
             m_watchpoints->item(row, WATCH_HIGH_COL)->text() != DEBUG_UNSET_ADDR) {
-            uint32_t low = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
-            uint32_t high = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_HIGH_COL)->text()));
+            uint32_t low = uint32_t(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
+            uint32_t high = uint32_t(hex2int(m_watchpoints->item(row, WATCH_HIGH_COL)->text()));
             int mask = watchGetMask(row);
 
             for (uint32_t addr = low; addr <= high; addr++) {
@@ -1412,8 +1445,8 @@ void MainWindow::watchUpdateRow(int row) {
     // this is needed in the case of overlapping address spaces
     if (m_watchpoints->item(row, WATCH_LOW_COL)->text() != DEBUG_UNSET_ADDR &&
         m_watchpoints->item(row, WATCH_HIGH_COL)->text() != DEBUG_UNSET_ADDR) {
-        uint32_t low = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
-        uint32_t high = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_HIGH_COL)->text()));
+        uint32_t low = uint32_t(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
+        uint32_t high = uint32_t(hex2int(m_watchpoints->item(row, WATCH_HIGH_COL)->text()));
 
         for (uint32_t addr = low; addr <= high; addr++) {
             changeDebugPoint(addr, DBG_MASK_READ | DBG_MASK_WRITE, false);
@@ -1571,11 +1604,11 @@ void MainWindow::watchModified(QTableWidgetItem *item) {
             m_watchpoints->blockSignals(false);
         }
 
-        addr = static_cast<uint32_t>(hex2int(QString::fromStdString(s)));
+        addr = uint32_t(hex2int(QString::fromStdString(s)));
         highStr = m_watchpoints->item(row, WATCH_HIGH_COL)->text();
 
         if (isNotValidHex(s) || s.length() > 6 ||
-           (highStr != DEBUG_UNSET_ADDR && addr > static_cast<uint32_t>(hex2int(highStr)))) {
+           (highStr != DEBUG_UNSET_ADDR && addr > uint32_t(hex2int(highStr)))) {
             item->setText(m_prevWatchLow);
             m_watchpoints->blockSignals(false);
             return;
@@ -1595,8 +1628,8 @@ void MainWindow::watchModified(QTableWidgetItem *item) {
         }
 
         if (m_prevWatchLow != DEBUG_UNSET_ADDR) {
-            uint32_t low = static_cast<uint32_t>(hex2int(m_prevWatchLow));
-            uint32_t high = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_HIGH_COL)->text()));
+            uint32_t low = uint32_t(hex2int(m_prevWatchLow));
+            uint32_t high = uint32_t(hex2int(m_watchpoints->item(row, WATCH_HIGH_COL)->text()));
 
             for (uint32_t addr = low; addr <= high; addr++) {
                 changeDebugPoint(addr, DBG_MASK_READ | DBG_MASK_WRITE, false);
@@ -1622,11 +1655,11 @@ void MainWindow::watchModified(QTableWidgetItem *item) {
             m_watchpoints->blockSignals(false);
         }
 
-        addr = static_cast<uint32_t>(hex2int(QString::fromStdString(s)));
+        addr = uint32_t(hex2int(QString::fromStdString(s)));
         lowStr = m_watchpoints->item(row, WATCH_LOW_COL)->text();
 
         if (isNotValidHex(s) || s.length() > 6 ||
-           (lowStr != DEBUG_UNSET_ADDR && addr < static_cast<uint32_t>(hex2int(lowStr)))) {
+           (lowStr != DEBUG_UNSET_ADDR && addr < uint32_t(hex2int(lowStr)))) {
             item->setText(m_prevWatchLow);
             m_watchpoints->blockSignals(false);
             return;
@@ -1646,8 +1679,8 @@ void MainWindow::watchModified(QTableWidgetItem *item) {
         }
 
         if (m_prevWatchHigh != DEBUG_UNSET_ADDR) {
-            uint32_t low = static_cast<uint32_t>(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
-            uint32_t high = static_cast<uint32_t>(hex2int(m_prevWatchHigh));
+            uint32_t low = uint32_t(hex2int(m_watchpoints->item(row, WATCH_LOW_COL)->text()));
+            uint32_t high = uint32_t(hex2int(m_prevWatchHigh));
 
             for (uint32_t addr = low; addr <= high; addr++) {
                 changeDebugPoint(addr, DBG_MASK_READ | DBG_MASK_WRITE, false);
@@ -1674,7 +1707,7 @@ void MainWindow::batterySetCharging(bool checked) {
 }
 
 void MainWindow::batterySet(int value) {
-    control.setBatteryStatus = static_cast<uint8_t>(value);
+    control.setBatteryStatus = uint8_t(value);
     ui->sliderBattery->setValue(value);
     ui->labelBattery->setText(QString::number(value * 20) + "%");
 }
@@ -2025,16 +2058,16 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
         QString val2 = QString::number(num2);
 
         if (num  > 0x7FFFFF) {
-            val += QStringLiteral("\n\t") + QString::number(static_cast<int32_t>(num | 0xFF000000u));
+            val += QStringLiteral("\n\t") + QString::number(int32_t(num | 0xFF000000u));
         }
         if (num0 > 0x7F) {
-            val0 += QStringLiteral("\t") + QString::number(static_cast<int8_t>(num0));
+            val0 += QStringLiteral("\t") + QString::number(int8_t(num0));
         }
         if (num1 > 0x7F) {
-            val1 += QStringLiteral("\t") + QString::number(static_cast<int8_t>(num1));
+            val1 += QStringLiteral("\t") + QString::number(int8_t(num1));
         }
         if (num2 > 0x7F) {
-            val2 += QStringLiteral("\t") + QString::number(static_cast<int8_t>(num2));
+            val2 += QStringLiteral("\t") + QString::number(int8_t(num2));
         }
 
         if (name == QStringLiteral("afregView"))
@@ -2160,7 +2193,7 @@ void MainWindow::osUpdate() {
 
         for (uint32_t j = i; j < i+11; j++) {
             uint8_t ch = mem_peek_byte(j);
-            array.append(static_cast<char>(ch));
+            array.append(char(ch));
             if ((ch < 0x20) || (ch > 0x7e)) {
                 ch = '.';
             }
@@ -2326,7 +2359,7 @@ void MainWindow::opModified(QTableWidgetItem *item) {
     QString txt = item->text();
     QString data;
     QByteArray array;
-    uint32_t addr = static_cast<uint32_t>(hex2int(ui->opView->item(row, OP_ADDR_COL)->text()));
+    uint32_t addr = uint32_t(hex2int(ui->opView->item(row, OP_ADDR_COL)->text()));
     array.resize(11);
 
     sender()->blockSignals(true);
@@ -2345,7 +2378,7 @@ void MainWindow::opModified(QTableWidgetItem *item) {
         array.fill(0);
         try {
             data_t value = tivars::TH_GenericReal::makeDataFromString(txt.toStdString());
-            for (int i = 0; i < 11 && i < static_cast<int>(value.size()); i++) {
+            for (int i = 0; i < 11 && i < int(value.size()); i++) {
                 array[i] = value[i];
             }
         } catch(...) {}
@@ -2360,7 +2393,7 @@ void MainWindow::opModified(QTableWidgetItem *item) {
 
     for (uint32_t j = addr; j < addr + 11; j++) {
         uint8_t ch = mem_peek_byte(j);
-        array.append(static_cast<char>(ch));
+        array.append(char(ch));
         if ((ch < 0x20) || (ch > 0x7e)) {
             ch = '.';
         }
@@ -2391,7 +2424,7 @@ void MainWindow::fpModified(QTableWidgetItem *item) {
     QString txt = item->text();
     QString data;
     QByteArray array;
-    uint32_t addr = static_cast<uint32_t>(hex2int(ui->fpStack->item(row, FP_ADDR_COL)->text()));
+    uint32_t addr = uint32_t(hex2int(ui->fpStack->item(row, FP_ADDR_COL)->text()));
     array.resize(11);
 
     sender()->blockSignals(true);
@@ -2410,7 +2443,7 @@ void MainWindow::fpModified(QTableWidgetItem *item) {
         array.fill(0);
         try {
             data_t value = tivars::TH_GenericReal::makeDataFromString(txt.toStdString());
-            for (int i = 0; i < 9 && i < static_cast<int>(value.size()); i++) {
+            for (int i = 0; i < 9 && i < int(value.size()); i++) {
                 array[i] = value[i];
             }
         } catch(...) {}
@@ -2425,7 +2458,7 @@ void MainWindow::fpModified(QTableWidgetItem *item) {
 
     for (uint32_t j = addr; j < addr + 9; j++) {
         uint8_t ch = mem_peek_byte(j);
-        array.append(static_cast<char>(ch));
+        array.append(char(ch));
         if ((ch < 0x20) || (ch > 0x7e)) {
             ch = '.';
         }
@@ -2468,7 +2501,7 @@ void MainWindow::contextOp(const QPoint &posa) {
     QAction *item = menu.exec(globalPos);
     if (item != Q_NULLPTR) {
         if (item->text() == gotoMem) {
-            gotoMemAddr(static_cast<uint32_t>(hex2int(addr)));
+            gotoMemAddr(uint32_t(hex2int(addr)));
         }
         if (item->text() == copyAddr) {
             qApp->clipboard()->setText(addr);
@@ -2535,7 +2568,7 @@ void MainWindow::stepIn() {
     disconnect(m_shortcutStepIn, &QShortcut::activated, this, &MainWindow::stepIn);
 
     debugSync();
-    debugStep(DBG_STEP_IN);
+    debugStep(ui->buttonToggleCStepping->isChecked() ? DBG_RUN_IN : DBG_STEP_IN);
 }
 
 void MainWindow::stepOver() {
@@ -2546,7 +2579,7 @@ void MainWindow::stepOver() {
     disconnect(m_shortcutStepOver, &QShortcut::activated, this, &MainWindow::stepOver);
 
     debugSync();
-    debugStep(DBG_STEP_OVER);
+    debugStep(ui->buttonToggleCStepping->isChecked() ? DBG_RUN_OVER : DBG_STEP_OVER);
 }
 
 void MainWindow::stepNext() {

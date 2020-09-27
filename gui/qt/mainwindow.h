@@ -11,8 +11,9 @@
 #include "dockwidget.h"
 #include "datawidget.h"
 #include "keypad/qtkeypadbridge.h"
-#include "debugger/hexwidget.h"
 #include "debugger/disasm.h"
+#include "debugger/hexwidget.h"
+#include "debugger/sourceswidget.h"
 #include "capture/animated-png.h"
 #include "../../core/vat.h"
 #include "../../core/debug/debug.h"
@@ -564,7 +565,6 @@ private:
     bool m_shutdown = false;
     bool m_recording = false;
 
-    uint32_t m_prevDisasmAddr = 0;
     QPalette m_cBack, m_cNone;
 
     QString m_prevWatchLow;
@@ -623,6 +623,7 @@ private:
     bool m_setup = false;
     int m_fullscreen = FULLSCREEN_NONE;
     uint32_t m_runUntilAddr;
+    SourcesWidget::LocInfo m_runLoc;
 
     QPushButton *m_btnCancelTranser;
     QProgressBar *m_progressBar;
