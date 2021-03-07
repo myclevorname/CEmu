@@ -55,7 +55,7 @@ TEMPLATE = app
 # Localization
 TRANSLATIONS += i18n/fr_FR.ts i18n/es_ES.ts i18n/nl_NL.ts
 
-CONFIG += c++14 console
+CONFIG += c++17 console
 
 # Seems to fix some LTO issues. See https://github.com/CE-Programming/CEmu/issues/366
 CONFIG += ltcg
