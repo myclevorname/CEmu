@@ -168,6 +168,7 @@ void debug_inst_repeat(bool first) {
 }
 
 void debug_record_jump(uint32_t addr) {
+    (void)addr;
     if (debug.step) {
         debug.tempExec = ~0u;
     }
