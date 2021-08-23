@@ -1,9 +1,11 @@
 #ifdef DEBUG_SUPPORT
 
 #include "debug.h"
-#include "../mem.h"
-#include "../emu.h"
+
 #include "../cpu.h"
+#include "../defines.h"
+#include "../emu.h"
+#include "../mem.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -108,7 +110,7 @@ void debug_step(int mode, uint32_t addr) {
             break;
         case DBG_STEP_OUT:
             debug.step = debug.stepOver = false;
-            /* fallthrough */
+            fallthrough;
         case DBG_RUN_OUT:
             gui_debug_close();
             debug.stepOut = debug.stackIndex;
@@ -118,7 +120,7 @@ void debug_step(int mode, uint32_t addr) {
         case DBG_STEP_NEXT:
         case DBG_RUN_UNTIL:
             gui_debug_close();
-            /* fallthrough */
+            fallthrough;
         case DBG_RUN_IN:
         case DBG_RUN_OVER:
         case DBG_RUN_OUT:
