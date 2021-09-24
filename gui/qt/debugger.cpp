@@ -894,8 +894,7 @@ void MainWindow::debugZeroCycles() {
 // Breakpoints
 // ------------------------------------------------
 
-void MainWindow::breakSetPrev(QTableWidgetItem *current, QTableWidgetItem *previous) {
-    (void)previous;
+void MainWindow::breakSetPrev(QTableWidgetItem *current, [[maybe_unused]] QTableWidgetItem *previous) {
     if (current == Q_NULLPTR || current->text().isEmpty()) {
         return;
     }
@@ -1141,8 +1140,7 @@ bool MainWindow::breakAdd(const QString &label, uint32_t addr, bool enabled, boo
 // Ports
 // ------------------------------------------------
 
-void MainWindow::portSetPrev(QTableWidgetItem *current, QTableWidgetItem *previous) {
-    (void)previous;
+void MainWindow::portSetPrev(QTableWidgetItem *current, [[maybe_unused]] QTableWidgetItem *previous) {
     if (current == Q_NULLPTR || current->text().isEmpty()) {
         return;
     }
@@ -1338,8 +1336,7 @@ void MainWindow::portModified(QTableWidgetItem *item) {
 // Watchpoints
 // ------------------------------------------------
 
-void MainWindow::watchSetPrev(QTableWidgetItem *current, QTableWidgetItem *previous) {
-    (void)previous;
+void MainWindow::watchSetPrev(QTableWidgetItem *current, [[maybe_unused]] QTableWidgetItem *previous) {
     if (current == Q_NULLPTR || current->text().isEmpty()) {
         return;
     }

@@ -79,13 +79,13 @@ def parse_args():
     parser_group_cfg.add_argument("--write-config",
                                   is_write_out_config_file_arg=True,
                                   help="write out config file based on all configs loaded in, including CLI args")
-    
+
     parser_group_tools = parser.add_argument_group("Tools options")
     parser_group_tools.add_argument("--7-zip",
                                     dest="seven_zip",
                                     default=DEFAULT_SEVENZIP,
                                     help="path to 7-zip's 7z.exe [formattable]")
-    
+
     parser_group_qt = parser.add_argument_group("Qt options")
     parser_group_qt.add_argument("--qt-base-dir",
                                  default=DEFAULT_QT_BASE_DIR,
@@ -103,7 +103,7 @@ def parse_args():
     parser_group_qt.add_argument("--qt-lib-dll-subdir",
                                  default=DEFAULT_QT_LIB_DLL_SUBDIR,
                                  help="subdirectory to search in for DLLs; empty to not use a subdirectory [formattable]")
-    
+
     parser_group_archive_path_gen = parser.add_argument_group("Archive, path, and general options")
     parser_group_archive_path_gen.add_argument("--root-dir",
                                                default=DEFAULT_ROOT_DIR,
@@ -131,12 +131,12 @@ def parse_args():
     parser_group_archive_path_gen.add_argument("--verbose",
                                                action="store_true",
                                                help="enable verbose printing (mainly debug log)")
-    
+
     args = parser.parse_args()
-    
+
     # This has to be done separately, otherwise configargparse doesn't like it
     args.fmt = parse_kv_to_dict(args.fmt) if args.fmt else args.fmt
-    
+
     return args, parser
 
 
@@ -152,23 +152,23 @@ def format_until_done(text, **fmt):
 def format_args(args):
     EXCLUDED_FMT_ARGS = ["qt_lib_include", "config", "write_config"]
     fmted_args = argparse.Namespace()
-    
+
     fmt = {
         "qt_version": args.qt_version
     }
     if args.fmt:
         fmt.update(args.fmt)
-    
+
     # preprocess qt_version
     fmt["qt_version"] = format_until_done(fmt["qt_version"], **fmt)
-    
+
     for arg in vars(args):
         arg_val = getattr(args, arg)
-        
+
         if arg in EXCLUDED_FMT_ARGS or arg == "fmt":
             setattr(fmted_args, arg, arg_val)
             continue
-        
+
         arg_val_xformed = None
         if fmt:
             if type(arg_val) in (str, bytes):
@@ -209,56 +209,56 @@ def similar_str(a, b):
 
 def collect_qt_static_files(proj_file):
     proj_fh = open(proj_file, "r")
-    
+
     all_matches = []
     all_matches_arr = []
     all_libs = []
-    
+
     for line in proj_fh:
         re_searches = re.search(r'\<AdditionalDependencies\>(.*)\<\/AdditionalDependencies\>', line)
         if re_searches:
             matches = re_searches.groups()
             all_matches_arr.append(list(matches))
-    
+
     # Flatten array
     for matches in all_matches_arr:
         all_matches += matches
-    
+
     # Split into filenames
     for libs in all_matches:
         all_libs += libs.split(os.pathsep)
-    
+
     # Filter out variables, and get basenames!
     # Also, filter out non-Qt variables
     all_libs = [os.path.basename(p) for p in all_libs if not p.startswith("%")]
-    
+
     # Remove .lib extensions AND filter only Qt libs
     # Also, make everything lowercase!
     all_libs = [".".join(p.split(".")[:-1]).lower() for p in all_libs if p.lower().startswith("q")]
-    
+
     # Interesting method - seperate and filter "d" libraries,
     # make sure we're really removing DEBUG libraries. If a library
     # happens to end with "d", then we'll preserve it.
-    
+
     # Seperate libs that end with 'd'
     all_d_libs = [p for p in all_libs if p.lower().endswith("d")]
     all_libs = [p for p in all_libs if not p.lower().endswith("d")]
-    
+
     # Remove d from libs
     all_d_libs = [p[:-1] for p in all_d_libs]
-    
+
     # If any of these match an element inside all_libs, remove it!
     all_d_libs = [p for p in all_d_libs if not p in all_libs]
-    
+
     # Adding back "d" for libraries that still exist!
     all_d_libs = [p+"d" for p in all_d_libs]
-    
+
     # Merge libraries
     all_libs = all_libs + all_d_libs
-    
+
     # Remove duplicates
     all_libs = list(set(all_libs))
-    
+
     return all_libs
 
 # When splitting a 7z file, it will always come with
@@ -272,7 +272,7 @@ def move_single_7z_file(filename):
     if len(file_list) == 0:
         logging.error("   -> ERROR: File (prefix) %s doesn't exist!", filename)
         sys.exit(1)
-    
+
     if len(file_list) == 1:
         logging.info("   -> Renaming: %s -> %s (only one part detected)", os.path.basename(file_list[0]), basename_fn)
         os.rename(file_list[0], filename)
@@ -344,7 +344,7 @@ def build_exclusion_list(root_dir, qt_base_dir, qt_dir, qt_lib_include, found_li
 
     # Is it bad to just base everything off of 32-bit? Assuming libraries
     # have the same version, maybe not...
-    
+
     qt_lib_dll_dir = os.path.join(root_dir, qt_base_dir, qt_dir, lib_dll_subdir)
 
     for root, dirnames, filenames in os.walk(qt_lib_dll_dir):
@@ -403,7 +403,7 @@ def build_exclusion_list(root_dir, qt_base_dir, qt_dir, qt_lib_include, found_li
             prefix_matches.remove("libGLESv2")
         if "opengl32sw" in prefix_matches:
             prefix_matches.remove("opengl32sw")
-        
+
         # Do a list comp to remove d3dcompiler_XX
         prefix_matches = [p for p in prefix_matches if not p.lower().startswith("d3dcompiler_")]
 
@@ -415,9 +415,9 @@ def build_exclusion_list(root_dir, qt_base_dir, qt_dir, qt_lib_include, found_li
 
     while prefix_matches_i < len(prefix_matches):
         first_prefix_match = prefix_matches[prefix_matches_i]
-        
+
         prefix_matches_j = prefix_matches_i + 1
-        
+
         while prefix_matches_j < len(prefix_matches):
             second_prefix_match = prefix_matches[prefix_matches_j]
             similarity = similar_str(first_prefix_match, second_prefix_match)
@@ -425,24 +425,24 @@ def build_exclusion_list(root_dir, qt_base_dir, qt_dir, qt_lib_include, found_li
             if similarity < 0.5:
                 prefix_matches_j -= 1
                 break
-            
+
             prefix_matches_j += 1
-        
+
         possible_common_prefix_matches = prefix_matches[prefix_matches_i:prefix_matches_j+1]
-        
+
         if len(possible_common_prefix_matches) > 1:
             common_prefix = os.path.commonprefix(possible_common_prefix_matches)
             common_suffix = commonsuffix(possible_common_prefix_matches)
-            
+
             logging.debug("Checking: %s", ", ".join(possible_common_prefix_matches))
             logging.debug("Common prefix: %s", common_prefix)
             logging.debug("Common suffix: %s", common_suffix)
-            
+
             possible_wcs.add((common_prefix, common_suffix))
             elements_wcs.update(possible_common_prefix_matches)
-            
+
             prefix_matches_i = prefix_matches_j
-        
+
         prefix_matches_i += 1
 
     non_wcs = set(prefix_matches).difference(elements_wcs)
@@ -477,7 +477,7 @@ def build_exclusion_list(root_dir, qt_base_dir, qt_dir, qt_lib_include, found_li
     logging.debug("** post prefix_matches = %s", prefix_matches)
 
     logging.info("   -- Using %d specific wildcards, transformed %d excludes to %d excludes.", len(final_wcs), pre_prefix_matches_len, len(prefix_matches))
-    
+
     return prefix_matches
 
 def generate_exclusion_flags_from_exclusion_prefix_matches(qt_lib_include, archive_excludes, prefix_matches):
@@ -498,14 +498,14 @@ def generate_exclusion_flags_from_exclusion_prefix_matches(qt_lib_include, archi
         all_excludes.append("-xr!qtwebengine*")
 
     all_excludes = all_excludes + ["-xr!" + e for e in archive_excludes]
-    
+
     return all_excludes
 
 def create_archive(root_dir, qt_base_dir, qt_dir, seven_zip_exe, output_archive, addl_paths=None, addl_flags=None, lib_dll_subdir=""):
     # To preserve path in 7-Zip, you MUST change directory to where the
     # folder is. If you don't, the first part of the path will be lost.
     os.chdir(root_dir)
-    
+
     qt_path = os.path.join(qt_base_dir, qt_dir)
 
     addl_paths = addl_paths or []
@@ -516,20 +516,20 @@ def create_archive(root_dir, qt_base_dir, qt_dir, seven_zip_exe, output_archive,
     subprocess_call([seven_zip_exe, "a", output_archive] + addl_paths + [qt_path,
                     "-t7z", "-m0=lzma2", "-mx9", "-v100000000",
                         # Exclude unnecessary files
-                        
+
                         # Installation files
                         "-xr!" + os.path.join(qt_path, "network.xml"),
                         "-xr!" + os.path.join(qt_path, "Maintenance*"),
                         "-xr!" + os.path.join(qt_path, "InstallationLog.txt"),
                         "-xr!" + os.path.join(qt_path, "components.xml"),
-                        
+
                         # Tools, examples, documentation, and VCRedist
                         "-xr!" + os.path.join(qt_path, "Tools"),
                         "-xr!" + os.path.join(qt_path, "Examples"),
                         "-xr!" + os.path.join(qt_path, "Docs"),
                         "-xr!" + os.path.join(qt_path, "vcredist"),
                         "-xr!" + os.path.join(qt_path, lib_dll_subdir, "doc"),
-                        
+
                         # Note that we can't just delete all debug DLLs,
                         # LIBs, or PDBs, since they are required to compile
                         # debug builds. We have to find the libraries we
@@ -570,7 +570,7 @@ def build_archive(root_dir, qt_base_dir, qt_dir, qt_version, qt_lib_include, arc
     logging.info("   -> Stage 2b: Creating Exclusion List")
     exclusion_prefix_matches = build_exclusion_list(root_dir, qt_base_dir, qt_dir, qt_lib_include, found_libs, lib_dll_subdir=lib_dll_subdir)
     all_exclude_flags = generate_exclusion_flags_from_exclusion_prefix_matches(qt_lib_include, archive_excludes, exclusion_prefix_matches)
-    
+
     logging.info("   -- Excluding %d files/wildcards from the archive.", len(all_exclude_flags))
 
     shutil.rmtree("build_chk")
@@ -584,19 +584,19 @@ def build_archive(root_dir, qt_base_dir, qt_dir, qt_version, qt_lib_include, arc
 if __name__ == "__main__":
     args, parser = parse_args()
     fmted_args = format_args(args)
-    
+
     logging.basicConfig(
         filename=fmted_args.log_file,
         level=logging.DEBUG if fmted_args.verbose else logging.INFO,
         format= '[%(asctime)s] {%(module)s::%(funcName)-25s/%(pathname)s:%(lineno)d} %(levelname)7s - %(message)s',
         datefmt='%Y%m%d %H:%M:%S'
     )
-    
+
     if args.print_config:
-        logging.info("Displaying resulting config...\n%s", parser.format_values()) 
+        logging.info("Displaying resulting config...\n%s", parser.format_values())
         logging.info("After applying formatting, resulting runtime config:\n%s",
             "\n".join(["{} = {}".format(arg, getattr(fmted_args, arg)) for arg in vars(fmted_args)]))
         sys.exit(0)
-    
+
     build_archive(fmted_args.root_dir, fmted_args.qt_base_dir, fmted_args.qt_dir, fmted_args.qt_version, fmted_args.qt_lib_include, fmted_args.archive_exclude, fmted_args.output_archive,
                   fmted_args.seven_zip, addl_paths=fmted_args.addl_path, lib_dll_subdir=fmted_args.qt_lib_dll_subdir)
