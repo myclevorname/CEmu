@@ -64,7 +64,7 @@ build_script:
   - cd %APPVEYOR_BUILD_FOLDER%
 
   - setlocal
-  
+
   - call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\Tools\VsDevCmd.bat" -arch=x86 -host_arch=amd64 -vcvars_ver=14.1 -no_logo
 
   # Since we want to use vcpkg, ensure that it's integrated into the
@@ -123,7 +123,7 @@ artifacts:
  - path: deploy\*-win32-release-static*.zip
    name: static_32_release
    type: zip
- 
+
  - path: deploy\*-win64-release-static*.zip
    name: static_64_release
    type: zip

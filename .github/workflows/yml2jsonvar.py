@@ -4,9 +4,9 @@
 # env variable specified. This works by printing this special value:
 #   ::set-env name=ENV_VAR_NAME::ENV_VAR_VALUE
 # Once you have your JSON, you can call fromJSON(value) to parse it.
-# 
+#
 # Usage: yml2jsonvar.py VAR_NAME yml_file
-# 
+#
 # Currently GitHub Actions isn't a fan of multiline strings... see:
 #   https://github.community/t/set-output-truncates-multiline-strings/16852
 #   https://github.com/actions/toolkit/issues/403
@@ -35,6 +35,6 @@ def yaml_to_json(yaml_file):
 
 if __name__ == "__main__":
     args = parse_args()
-    
+
     json_out = yaml_to_json(args.yaml_file)
     print("::set-env name={var_name}::{json_out}.format(var_name=args.var_name, json_out=json_out)

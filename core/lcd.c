@@ -215,7 +215,7 @@ static uint32_t lcd_process_index(uint8_t index) {
 }
 
 static void lcd_fill_bytes(uint8_t bytes) {
-    mem_dma_cpy(&lcd.fifo[lcd.pos], lcd.upcurr, bytes);
+    mem_dma_read(&lcd.fifo[lcd.pos], lcd.upcurr, bytes);
     lcd.pos += bytes;
     lcd.upcurr += bytes;
 }
