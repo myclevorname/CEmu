@@ -87,10 +87,14 @@ signals:
     void setLcdResponseMode(bool state);
 #ifdef LIBUSB_SUPPORT
     void usbHotplug(libusb_device *device, bool attached);
+#endif
     void usbUnplug();
 
 private slots:
     void usbUnplugged();
+    void usbConnectMsd(QVariant userData);
+#ifdef LIBUSB_SUPPORT
+    void usbConnectPhysical(QVariant userData);
 #endif
 
 protected:
@@ -209,7 +213,8 @@ private:
         USB_PID,
         USB_MANUFACTURER,
         USB_PRODUCT,
-        USB_SERIAL_NUMBER
+        USB_SERIAL_NUMBER,
+        USB_COLUMNS,
     };
 
     enum {
@@ -531,12 +536,15 @@ private:
     void autotesterLaunch();
     void autotesterRefreshCRC();
 
-#ifdef LIBUSB_SUPPORT
     // usb devices
+    void usbCreateDevice(QStringList items, QVariant userData, void (MainWindow::*connectHandler)(QVariant userData));
+    static bool usbUnplugCallback(void *context, int value, int total);
+#ifdef LIBUSB_SUPPORT
     static int LIBUSB_CALL usbHotplugCallback(libusb_context *context, libusb_device *device, libusb_hotplug_event event, void *userData);
     void usbUpdate(libusb_device *device, bool arrived = true);
-    void usbRefresh();
 #endif
+    void usbCreateMsd();
+    void usbRefresh();
 
     // keybindings
     void keymapExport();
@@ -907,8 +915,8 @@ private:
     libusb_hotplug_callback_handle m_usbHotplugCallbackHandle{};
     LibusbEventThread *m_usbEventThread = nullptr;
     uint16_t m_usbLangId = 0x0409;
-    QButtonGroup *m_usbConnectGroup = nullptr;
 #endif
+    QButtonGroup *m_usbConnectGroup = nullptr;
 
 #ifdef _WIN32
     QAction *actionToggleConsole;
