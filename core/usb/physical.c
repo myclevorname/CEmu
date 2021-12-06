@@ -469,6 +469,7 @@ static int device_intercept_control_setup(context_t *context, device_t *device, 
                         return USB_SUCCESS;
                     }
                     if (device->state >= DEVICE_STATE_CONFIGURED && !setup->wValue && !setup->wIndex) {
+                        gui_console_printf("[USB] Debug: Getting Hub Status 0x%08x\n", device->hub->statusChange.value);
                         *status = LIBUSB_TRANSFER_COMPLETED;
                         transfer_append(transfer, &device->hub->statusChange,
                                         sizeof(device->hub->statusChange));
@@ -480,6 +481,8 @@ static int device_intercept_control_setup(context_t *context, device_t *device, 
                     }
                     if (device->state >= DEVICE_STATE_CONFIGURED
                         && !setup->wValue && setup->wIndex && setup->wIndex <= device->numPorts) {
+                        gui_console_printf("[USB] Debug: Getting Port %d Status 0x%08x\n", setup->wIndex,
+                                           device->hub->ports[setup->wIndex - 1].statusChange.value);
                         *status = LIBUSB_TRANSFER_COMPLETED;
                         transfer_append(transfer, &device->hub->ports[setup->wIndex - 1].statusChange,
                                         sizeof(device->hub->ports[setup->wIndex - 1].statusChange));
@@ -498,6 +501,7 @@ static int device_intercept_control_setup(context_t *context, device_t *device, 
                     if (device->state >= DEVICE_STATE_CONFIGURED
                         && setup->wValue < 2 && !setup->wIndex) {
                         *status = LIBUSB_TRANSFER_COMPLETED;
+                        gui_console_printf("[USB] Debug: Clearing Hub Feature %d\n", setup->wValue);
                         device->hub->change.value &= ~(UINT16_C(1) << setup->wValue);
                     }
                     break;
@@ -510,6 +514,7 @@ static int device_intercept_control_setup(context_t *context, device_t *device, 
                         && setup->wIndex && setup->wIndex <= device->numPorts) {
                         *status = LIBUSB_TRANSFER_COMPLETED;
                         if (UINT32_C(0x5F0106) >> setup->wValue & 1) {
+                            gui_console_printf("[USB] Debug: Clearing Port %d Feature %d\n", setup->wIndex, setup->wValue);
                             port_t *port = &device->hub->ports[setup->wIndex - 1];
                             port->statusChange.value &= ~(UINT32_C(1) << setup->wValue);
                             switch (setup->wValue) {
@@ -536,6 +541,7 @@ static int device_intercept_control_setup(context_t *context, device_t *device, 
                     }
                     if (device->state >= DEVICE_STATE_CONFIGURED
                         && setup->wValue < 2 && !setup->wIndex) {
+                        gui_console_printf("[USB] Debug: Setting Hub Feature %d\n", setup->wValue);
                         *status = LIBUSB_TRANSFER_COMPLETED;
                         device->hub->change.value |= UINT16_C(1) << setup->wValue;
                     }
@@ -549,6 +555,7 @@ static int device_intercept_control_setup(context_t *context, device_t *device, 
                         && setup->wIndex && setup->wIndex <= device->numPorts) {
                         *status = LIBUSB_TRANSFER_COMPLETED;
                         if (UINT32_C(0x7F0114) >> setup->wValue & 1) {
+                            gui_console_printf("[USB] Debug: Setting Port %d Feature %d\n", setup->wIndex, setup->wValue);
                             port_t *port = &device->hub->ports[setup->wIndex - 1];
                             port->statusChange.value |= UINT32_C(1) << setup->wValue;
                             switch (setup->wValue) {
@@ -559,6 +566,7 @@ static int device_intercept_control_setup(context_t *context, device_t *device, 
                                         port->change.enable = true;
                                         break;
                                     }
+                                    gui_console_printf("[USB] Debug: Reset Port %d\n", setup->wIndex);
                                     if (device_reset(context, port->device)) {
                                         port->device->state = DEVICE_STATE_DEFAULT_OR_ADDRESS;
                                         port->device->address = 0;
@@ -872,6 +880,26 @@ static int device_intercept_control_status(device_t *device, transfer_t *transfe
 }
 
 static int device_intercept_interrupt(device_t *device, transfer_t *transfer) {
+#if 0
+    static int counter = 0;
+    if (device->numPorts >= 1)
+        switch (counter++ >> 8) {
+            case 6: UPDATE_STATUS_CHANGE(device->hub, power, true); break;
+            case 7: UPDATE_STATUS_CHANGE(device->hub, power, false); break;
+            case 8: UPDATE_STATUS_CHANGE(device->hub, over_current, true); break;
+            case 9: UPDATE_STATUS_CHANGE(device->hub, over_current, false); break;
+            case 10: UPDATE_STATUS_CHANGE(device->hub->ports, connection, true); break;
+            case 11: UPDATE_STATUS_CHANGE(device->hub->ports, connection, false); break;
+            case 12: UPDATE_STATUS_CHANGE(device->hub->ports, enable, true); break;
+            case 13: UPDATE_STATUS_CHANGE(device->hub->ports, enable, false); break;
+            case 14: UPDATE_STATUS_CHANGE(device->hub->ports, suspend, true); break;
+            case 15: UPDATE_STATUS_CHANGE(device->hub->ports, suspend, false); break;
+            case 16: UPDATE_STATUS_CHANGE(device->hub->ports, over_current, true); break;
+            case 17: UPDATE_STATUS_CHANGE(device->hub->ports, over_current, false); break;
+            case 18: UPDATE_STATUS_CHANGE(device->hub->ports, reset, true); break;
+            case 19: UPDATE_STATUS_CHANGE(device->hub->ports, reset, false); break;
+        }
+#endif
     struct libusb_transfer *libusb_transfer = transfer->transfer;
     if (transfer->state >= TRANSFER_STATE_PENDING && libusb_transfer->endpoint & LIBUSB_ENDPOINT_IN
         && device->numPorts) {
@@ -892,6 +920,10 @@ static int device_intercept_interrupt(device_t *device, transfer_t *transfer) {
             transfer->state = TRANSFER_STATE_PENDING;
             libusb_transfer->actual_length = 0;
         } else if (libusb_transfer->callback) {
+            gui_console_printf("[USB] Debug: Reporting Changes 0x");
+            for (int i = 0; i != libusb_transfer->actual_length; ++i)
+                gui_console_printf("%02X", libusb_transfer->buffer[i]);
+            gui_console_printf("\n");
             libusb_transfer->callback(libusb_transfer);
         }
     }
@@ -1281,6 +1313,7 @@ int usb_physical_device(usb_event_t *event) {
                 device->state = DEVICE_STATE_POWERED;
                 device->address = 0;
             } else if (device->state >= DEVICE_STATE_POWERED && type == USB_RESET_EVENT) {
+                gui_console_printf("[USB] Debug: Reset Root Device\n");
                 device->state = DEVICE_STATE_POWERED;
                 if (device_reset(context, device)) {
                     device->state = DEVICE_STATE_DEFAULT_OR_ADDRESS;
