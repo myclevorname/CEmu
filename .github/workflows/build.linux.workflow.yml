@@ -2,7 +2,7 @@ name: Build Linux
 
 on:
   push:
-    branches: [ master, feature/github-actions ]
+    branches: [ master, feature/github-actions, test/libusb ]
   pull_request:
     branches: [ master, feature/github-actions ]
   release:
@@ -33,7 +33,7 @@ jobs:
         set -e
         sudo add-apt-repository universe
         sudo apt update
-        sudo apt install -y cmake ninja-build libarchive-dev libzstd-dev zlib1g-dev libgl1-mesa-dev nettle-dev libacl1-dev liblz4-dev libc6-dev
+        sudo apt install -y cmake ninja-build libarchive-dev libzstd-dev zlib1g-dev libgl1-mesa-dev nettle-dev libacl1-dev liblz4-dev libc6-dev libusb-1.0-0-dev
 
     - name: Install Qt
       uses: jurplel/install-qt-action@f03f05556819ceb3781ee2f455ec44c339d683c0 # v4

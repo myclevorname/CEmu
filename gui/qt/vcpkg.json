@@ -5,6 +5,7 @@
   "description": "Developer-oriented emulator of the eZ80-based TI-84 Plus CE / TI-83 Premium CE calculators.",
   "dependencies": [
     "pkgconf",
+    "libusb-win32",
     {
       "name": "libarchive",
       "default-features": false

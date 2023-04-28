@@ -2,7 +2,7 @@ name: Build macOS
 
 on:
   push:
-    branches: [ master, feature/github-actions ]
+    branches: [ master, feature/github-actions, test/libusb ]
   pull_request:
     branches: [ master, feature/github-actions ]
   release:
@@ -36,7 +36,7 @@ jobs:
     - name: Install dependencies
       run: |
         set -e
-        brew install libarchive libpng zlib automake autoconf libtool
+        brew install libarchive libpng zlib automake autoconf libtool libusb
 
     - name: Install Qt
       uses: jurplel/install-qt-action@f03f05556819ceb3781ee2f455ec44c339d683c0 # v4

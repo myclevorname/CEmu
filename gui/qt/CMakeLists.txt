@@ -119,6 +119,8 @@ qt_add_executable(CEmu ${MAYBE_MACOSX_BUNDLE}
     ../../core/usb/disconnected.c
     ../../core/usb/dusb.c
     ../../core/usb/fotg210.h
+    ../../core/usb/msd.c
+    ../../core/usb/physical.c
     ../../core/usb/usb.c ../../core/usb/usb.h
     ../../core/vat.c ../../core/vat.h
     ../../tests/autotester/autotester.cpp ../../tests/autotester/autotester.h
@@ -276,6 +278,20 @@ else()
     message(WARNING "No LibArchive found! CE Bundle extraction/transfer will not be available")
 endif()
 
+if(WIN32)
+    target_link_libraries(CEmu PRIVATE "libusb0")
+    target_compile_definitions(CEmu PRIVATE "LIBUSB_SUPPORT")
+elseif(PkgConfig_FOUND)
+    pkg_check_modules(LibUsb libusb-1.0>=1.0.16)
+    if(LibUsb_FOUND)
+        target_include_directories(CEmu PRIVATE ${LibUsb_INCLUDE_DIRS})
+        target_link_directories(CEmu PRIVATE ${LibUsb_LIBRARY_DIRS})
+        target_link_libraries(CEmu PRIVATE ${LibUsb_LIBRARIES})
+    else()
+        message(WARNING "No LibUsb found! Some USB things will not be available")
+    endif()
+endif()
+
 if(NOT WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/capture/libpng-apng/.libs/libpng16.a")
     message(STATUS "Static APNG-enabled LibPNG will be used")
     if(TRY_STATIC_DEPS_LDFLAGS MATCHES "libz.a") # already linked before
@@ -378,11 +394,13 @@ qt_add_resources(CEmu "icons"
         "resources/icons/check_update.png"
         "resources/icons/checkgray.png"
         "resources/icons/clock.png"
+        "resources/icons/connect.png"
         "resources/icons/console.png"
         "resources/icons/cpu_status.png"
         "resources/icons/debug_control.png"
         "resources/icons/debugger.png"
         "resources/icons/disasm.png"
+        "resources/icons/disconnect.png"
         "resources/icons/exit.png"
         "resources/icons/export.png"
         "resources/icons/generic_export.png"

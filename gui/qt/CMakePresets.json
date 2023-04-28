@@ -21,6 +21,10 @@
         "VCPKG_MANIFEST_INSTALL": {
           "type": "BOOL",
           "value": "True"
+        },
+        "VCPKG_INSTALL_OPTIONS": {
+          "type": "STRING",
+          "value": "--allow-unsupported"
         }
       }
     },
